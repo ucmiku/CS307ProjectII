@@ -19,5 +19,5 @@ build/
 ### Project Spec Ignored ###
 benchmark-*.json
 
-### config file ###
-/sustc-runner/src/main/resources/application.yml
+
+
