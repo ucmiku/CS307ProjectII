@@ -129,8 +129,7 @@ Then you should find a `submit` folder under the root of project, containing a s
 > If any jar file presents in the `submit` folder, the runner will use it
 > instead of the latest code in `sustc-api` module.
 
-Then create exactly one SQL file (any filename is acceptable) under the `submit` folder
-that could properly initialize your database.
+
 You don't need to include a `create database` statement in your submission, as we will create the database for you.
 
 ```text
