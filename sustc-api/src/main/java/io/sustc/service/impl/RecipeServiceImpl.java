@@ -193,25 +193,50 @@ public class RecipeServiceImpl implements RecipeService {
         if (dto == null) {
             throw new IllegalArgumentException("recipe dto is null");
         }
-        if (dto.getRecipeId() <= 0) {
-            throw new IllegalArgumentException("recipeId must be positive");
-        }
         if (!StringUtils.hasText(dto.getName())) {
             throw new IllegalArgumentException("recipe name is empty");
+        }
+
+        long recipeId = dto.getRecipeId();
+        if (recipeId <= 0) {
+            throw new IllegalArgumentException("recipeId must be positive");
         }
 
         Boolean exists = jdbcTemplate.queryForObject(
                 "SELECT EXISTS(SELECT 1 FROM recipes WHERE RecipeId = ?)",
                 Boolean.class,
-                dto.getRecipeId()
+                recipeId
         );
         if (Boolean.TRUE.equals(exists)) {
             throw new IllegalArgumentException("recipeId already exists");
         }
 
-        String cook = dto.getCookTime() == null ? "" : dto.getCookTime();
-        String prep = dto.getPrepTime() == null ? "" : dto.getPrepTime();
-        String totalTime = dto.getTotalTime() == null ? "" : dto.getTotalTime();
+        String cook = StringUtils.hasText(dto.getCookTime()) ? dto.getCookTime().trim() : null;
+        String prep = StringUtils.hasText(dto.getPrepTime()) ? dto.getPrepTime().trim() : null;
+        String totalTime = StringUtils.hasText(dto.getTotalTime()) ? dto.getTotalTime().trim() : null;
+
+        Duration cookDur = Duration.ZERO;
+        Duration prepDur = Duration.ZERO;
+        if (cook != null) {
+            cookDur = parseDurationStrict(cook);
+        }
+        if (prep != null) {
+            prepDur = parseDurationStrict(prep);
+        }
+        if (totalTime == null && (cook != null || prep != null)) {
+            try {
+                Duration total = cookDur.plus(prepDur);
+                if (total.isNegative()) {
+                    throw new IllegalArgumentException("negative duration");
+                }
+                total.toSeconds();
+                totalTime = total.toString();
+            } catch (ArithmeticException e) {
+                throw new IllegalArgumentException("duration overflow");
+            }
+        } else if (totalTime != null) {
+            parseDurationStrict(totalTime);
+        }
 
         jdbcTemplate.update(
                 "INSERT INTO recipes (" +
@@ -219,15 +244,15 @@ public class RecipeServiceImpl implements RecipeService {
                         "AggregatedRating, ReviewCount, Calories, FatContent, SaturatedFatContent, CholesterolContent, SodiumContent, " +
                         "CarbohydrateContent, FiberContent, SugarContent, ProteinContent, RecipeServings, RecipeYield" +
                         ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                dto.getRecipeId(),
+                recipeId,
                 dto.getName().trim(),
                 auth.getAuthorId(),
                 cook,
                 prep,
                 totalTime,
                 dto.getDatePublished(),
-                dto.getDescription() == null ? "" : dto.getDescription(),
-                dto.getRecipeCategory() == null ? "" : dto.getRecipeCategory(),
+                dto.getDescription(),
+                dto.getRecipeCategory(),
                 0.0,
                 0,
                 dto.getCalories(),
@@ -240,7 +265,7 @@ public class RecipeServiceImpl implements RecipeService {
                 dto.getSugarContent(),
                 dto.getProteinContent(),
                 dto.getRecipeServings(),
-                dto.getRecipeYield() == null ? "" : dto.getRecipeYield()
+                dto.getRecipeYield()
         );
 
         String[] parts = dto.getRecipeIngredientParts() == null ? new String[0] : dto.getRecipeIngredientParts();
@@ -250,19 +275,21 @@ public class RecipeServiceImpl implements RecipeService {
                     .map(String::trim)
                     .sorted(String::compareToIgnoreCase)
                     .toArray(String[]::new);
-            jdbcTemplate.batchUpdate(
-                    "INSERT INTO recipe_ingredients (RecipeId, IngredientPart) VALUES (?, ?) " +
-                            "ON CONFLICT (RecipeId, IngredientPart) DO NOTHING",
-                    Arrays.asList(sorted),
-                    sorted.length,
-                    (ps, part) -> {
-                        ps.setLong(1, dto.getRecipeId());
-                        ps.setString(2, part);
-                    }
-            );
+            if (sorted.length > 0) {
+                jdbcTemplate.batchUpdate(
+                        "INSERT INTO recipe_ingredients (RecipeId, IngredientPart) VALUES (?, ?) " +
+                                "ON CONFLICT (RecipeId, IngredientPart) DO NOTHING",
+                        Arrays.asList(sorted),
+                        sorted.length,
+                        (ps, part) -> {
+                            ps.setLong(1, recipeId);
+                            ps.setString(2, part);
+                        }
+                );
+            }
         }
 
-        return dto.getRecipeId();
+        return recipeId;
     }
 
     @Override
