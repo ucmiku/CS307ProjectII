@@ -102,7 +102,7 @@ public class RecipeServiceImpl implements RecipeService {
             throw new IllegalArgumentException("page must be >= 1 and size must be > 0");
         }
 
-        StringBuilder where = new StringBuilder(" WHERE 1=1 ");
+        StringBuilder where = new StringBuilder(" WHERE u.IsDeleted = FALSE ");
         List<Object> params = new ArrayList<>();
 
         if (StringUtils.hasText(keyword)) {
@@ -121,14 +121,14 @@ public class RecipeServiceImpl implements RecipeService {
         }
 
         String orderBy = switch (sort == null ? "" : sort) {
-            case "rating_desc" -> " ORDER BY r.AggregatedRating DESC NULLS LAST, r.RecipeId ASC ";
+            case "rating_desc" -> " ORDER BY r.AggregatedRating DESC NULLS LAST, r.DatePublished DESC NULLS LAST, r.RecipeId ASC ";
             case "date_desc" -> " ORDER BY r.DatePublished DESC NULLS LAST, r.RecipeId ASC ";
             case "calories_asc" -> " ORDER BY r.Calories ASC NULLS LAST, r.RecipeId ASC ";
             default -> " ORDER BY r.RecipeId ASC ";
         };
 
         long total = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM recipes r " + where,
+                "SELECT COUNT(*) FROM recipes r JOIN users u ON u.AuthorId = r.AuthorId " + where,
                 Long.class,
                 params.toArray()
         );
