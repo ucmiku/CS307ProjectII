@@ -233,22 +233,14 @@ public class ReviewServiceImpl implements ReviewService {
     public long likeReview(AuthInfo auth, long reviewId) {
         // 检查参数
         if (auth == null || auth.getAuthorId() <= 0) {
-            return -1; // 认证信息无效
+            throw new SecurityException("Invalid authentication info");
         }
 
-        // 检查用户是否有效且活跃
+        // 验证用户认证（使用 UserService.login 验证密码）
         long userId = auth.getAuthorId();
-        try {
-            Boolean isDeleted = jdbcTemplate.queryForObject(
-                "SELECT IsDeleted FROM users WHERE AuthorId = ?",
-                Boolean.class,
-                userId
-            );
-            if (isDeleted == null || isDeleted) {
-                return -1; // 用户不存在或已删除
-            }
-        } catch (EmptyResultDataAccessException e) {
-            return -1; // 用户不存在
+        long loginResult = userService.login(auth);
+        if (loginResult == -1L) {
+            throw new SecurityException("Authentication failed");
         }
 
         // 检查评论是否存在
@@ -260,12 +252,12 @@ public class ReviewServiceImpl implements ReviewService {
                 reviewId
             );
         } catch (EmptyResultDataAccessException e) {
-            return -1; // 评论不存在
+            throw new IllegalArgumentException("Review does not exist");
         }
 
         // 检查用户是否试图给自己的评论点赞
         if (reviewAuthorId != null && reviewAuthorId == userId) {
-            return -2; // 不能给自己点赞
+            throw new SecurityException("Users cannot like their own reviews");
         }
 
         // 检查是否已经点过赞
@@ -277,8 +269,13 @@ public class ReviewServiceImpl implements ReviewService {
         );
 
         if (alreadyLiked != null && alreadyLiked) {
-            // 已经点过赞，返回 -2 表示已点赞
-            return -2;
+            // 已经点过赞，返回当前点赞数（no-op）
+            Long likeCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM review_likes WHERE ReviewId = ?",
+                Long.class,
+                reviewId
+            );
+            return likeCount != null ? likeCount : 0L;
         }
 
         // 添加点赞
@@ -303,22 +300,14 @@ public class ReviewServiceImpl implements ReviewService {
     public long unlikeReview(AuthInfo auth, long reviewId) {
         // 检查参数
         if (auth == null || auth.getAuthorId() <= 0) {
-            return -1; // 认证信息无效
+            throw new SecurityException("Invalid authentication info");
         }
 
-        // 检查用户是否有效且活跃
+        // 验证用户认证（使用 UserService.login 验证密码）
         long userId = auth.getAuthorId();
-        try {
-            Boolean isDeleted = jdbcTemplate.queryForObject(
-                "SELECT IsDeleted FROM users WHERE AuthorId = ?",
-                Boolean.class,
-                userId
-            );
-            if (isDeleted == null || isDeleted) {
-                return -1; // 用户不存在或已删除
-            }
-        } catch (EmptyResultDataAccessException e) {
-            return -1; // 用户不存在
+        long loginResult = userService.login(auth);
+        if (loginResult == -1L) {
+            throw new SecurityException("Authentication failed");
         }
 
         // 检查评论是否存在
@@ -329,7 +318,7 @@ public class ReviewServiceImpl implements ReviewService {
         );
 
         if (reviewExists == null || !reviewExists) {
-            return -1; // 评论不存在
+            throw new IllegalArgumentException("Review does not exist");
         }
 
         // 检查是否已经点过赞
@@ -341,8 +330,13 @@ public class ReviewServiceImpl implements ReviewService {
         );
 
         if (hasLiked == null || !hasLiked) {
-            // 没有点过赞，返回 -2
-            return -2;
+            // 没有点过赞，返回当前点赞数（no-op）
+            Long likeCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM review_likes WHERE ReviewId = ?",
+                Long.class,
+                reviewId
+            );
+            return likeCount != null ? likeCount : 0L;
         }
 
         // 删除点赞
