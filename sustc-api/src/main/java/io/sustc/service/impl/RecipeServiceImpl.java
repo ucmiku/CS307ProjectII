@@ -323,6 +323,9 @@ public class RecipeServiceImpl implements RecipeService {
     @Transactional
     public void updateTimes(AuthInfo auth, long recipeId, String cookTimeIso, String prepTimeIso) {
         assertActiveUser(auth);
+        if (recipeId <= 0) {
+            throw new IllegalArgumentException("recipeId must be positive");
+        }
 
         long recipeAuthor = jdbcTemplate.query(
                 "SELECT AuthorId FROM recipes WHERE RecipeId = ?",
@@ -365,8 +368,8 @@ public class RecipeServiceImpl implements RecipeService {
             throw new IllegalArgumentException("duration overflow");
         }
 
-        String nextCook = cookTimeIso != null ? cookTimeIso : (currentCook == null ? "" : currentCook);
-        String nextPrep = prepTimeIso != null ? prepTimeIso : (currentPrep == null ? "" : currentPrep);
+        String nextCook = cookTimeIso != null ? cookTimeIso.trim() : currentCook;
+        String nextPrep = prepTimeIso != null ? prepTimeIso.trim() : currentPrep;
         String totalIso = total.toString();
 
         jdbcTemplate.update(
