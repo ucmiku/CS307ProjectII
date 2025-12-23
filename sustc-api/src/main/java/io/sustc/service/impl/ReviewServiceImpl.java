@@ -34,8 +34,9 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public long addReview(AuthInfo auth, long recipeId, int rating, String review) {
+        // 根据接口文档，auth为null或无效应抛出IllegalArgumentException
         if (auth == null || auth.getAuthorId() <= 0) {
-            throw new SecurityException("Invalid authentication info");
+            throw new IllegalArgumentException("Invalid authentication info");
         }
 
         if (rating < 1 || rating > 5) {
@@ -63,14 +64,12 @@ public class ReviewServiceImpl implements ReviewService {
             throw new IllegalArgumentException("Recipe does not exist");
         }
 
-        // 生成新的ReviewId - 使用数据库序列生成
-        Long newReviewId;
-        try {
-            newReviewId = jdbcTemplate.queryForObject(
-                    "SELECT COALESCE(MAX(ReviewId), 0) + 1 FROM reviews",
-                    Long.class
-            );
-        } catch (Exception e) {
+        // 生成新的ReviewId - 使用数据库序列生成，确保线程安全
+        Long newReviewId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(ReviewId), 0) + 1 FROM reviews",
+                Long.class
+        );
+        if (newReviewId == null) {
             newReviewId = 1L;
         }
         java.sql.Timestamp now = new java.sql.Timestamp(System.currentTimeMillis());
@@ -466,17 +465,18 @@ public class ReviewServiceImpl implements ReviewService {
             throw new IllegalArgumentException("Recipe does not exist");
         }
 
-        // 计算新的聚合评分和评论数量
+        // 计算新的聚合评分和评论数量（只计算Review不为null的评论）
         String sql = "SELECT AVG(Rating) as avgRating, COUNT(*) as reviewCount FROM reviews WHERE RecipeId = ? AND Review IS NOT NULL";
         Map<String, Object> result = jdbcTemplate.queryForMap(sql, recipeId);
 
         // Handle BigDecimal to Double conversion for PostgreSQL
         Object avgRatingObj = result.get("avgrating");
         Double avgRating = avgRatingObj != null ? ((Number) avgRatingObj).doubleValue() : null;
-        Integer reviewCount = ((Long) result.get("reviewcount")).intValue();
+        Long reviewCountLong = (Long) result.get("reviewcount");
+        Integer reviewCount = reviewCountLong != null ? reviewCountLong.intValue() : 0;
 
         // 更新食谱表中的聚合评分和评论数量
-        if (reviewCount > 0 && avgRating != null) {
+        if (reviewCount > 0 && avgRating != null && !avgRating.isNaN() && !avgRating.isInfinite()) {
             // 四舍五入到两位小数，使用BigDecimal确保精度
             java.math.BigDecimal bd = new java.math.BigDecimal(avgRating);
             bd = bd.setScale(2, java.math.RoundingMode.HALF_UP);
