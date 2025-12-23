@@ -2,6 +2,7 @@ package io.sustc.service.impl;
 
 import io.sustc.dto.*;
 import io.sustc.service.UserService;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -36,7 +37,7 @@ public class UserServiceImpl implements UserService {
         }
 
         String birthday = req.getBirthday();
-        int age = 0;
+        int age;
         if (birthday != null && !birthday.isEmpty()) {
             try {
                 LocalDate birthDate = LocalDate.parse(birthday);
@@ -57,18 +58,15 @@ public class UserServiceImpl implements UserService {
                 Boolean.class,
                 req.getName()
         );
-
-        if (userExists != null && userExists) {
+        if (userExists) {
             return -1;
         }
 
-        Long newUserId;
-        try {
-            newUserId = jdbcTemplate.queryForObject(
-                    "SELECT COALESCE(MAX(AuthorId), 0) + 1 FROM users",
-                    Long.class
-            );
-        } catch (Exception e) {
+        Long newUserId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(AuthorId), 0) + 1 FROM users",
+                Long.class
+        );
+        if (newUserId == null) {
             newUserId = 1L;
         }
 
@@ -108,7 +106,7 @@ public class UserServiceImpl implements UserService {
                     authorId
             );
 
-            if (isDeleted == null || isDeleted) {
+            if (isDeleted) {
                 return -1;
             }
 
@@ -118,13 +116,11 @@ public class UserServiceImpl implements UserService {
                     authorId
             );
 
-            if (storedPassword != null && storedPassword.equals(password)) {
+            if (storedPassword.equals(password)) {
                 return authorId;
             } else {
                 return -1;
             }
-        } catch (EmptyResultDataAccessException e) {
-            return -1;
         } catch (Exception e) {
             return -1;
         }
@@ -153,7 +149,7 @@ public class UserServiceImpl implements UserService {
                     operatorId
             );
 
-            if (operatorIsDeleted == null || operatorIsDeleted) {
+            if (operatorIsDeleted) {
                 throw new SecurityException("Operator user is inactive or does not exist");
             }
 
@@ -196,7 +192,7 @@ public class UserServiceImpl implements UserService {
                     followerId
             );
 
-            if (followerIsDeleted == null || followerIsDeleted) {
+            if (followerIsDeleted) {
                 throw new SecurityException("Follower user is inactive or does not exist");
             }
 
@@ -206,7 +202,7 @@ public class UserServiceImpl implements UserService {
                     followeeId
             );
 
-            if (followeeIsDeleted == null || followeeIsDeleted) {
+            if (followeeIsDeleted) {
                 throw new SecurityException("Followee user is inactive or does not exist");
             }
 
@@ -216,7 +212,7 @@ public class UserServiceImpl implements UserService {
                     followerId, followeeId
             );
 
-            if (isFollowing != null && isFollowing) {
+            if (isFollowing) {
                 jdbcTemplate.update(
                         "DELETE FROM user_follows WHERE FollowerId = ? AND FollowingId = ?",
                         followerId, followeeId
@@ -236,6 +232,7 @@ public class UserServiceImpl implements UserService {
     }
 
 
+    @Getter
     private final RowMapper<UserRecord> userRowMapper = (rs, rowNum) -> {
         UserRecord record = new UserRecord();
         record.setAuthorId(rs.getLong("AuthorId"));
@@ -273,28 +270,38 @@ public class UserServiceImpl implements UserService {
                     Integer.class,
                     userId
             );
-            record.setFollowers(followersCount != null ? followersCount : 0);
+            if (record != null) {
+                record.setFollowers(followersCount);
+            }
 
             Integer followingCount = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM user_follows WHERE FollowerId = ?",
                     Integer.class,
                     userId
             );
-            record.setFollowing(followingCount != null ? followingCount : 0);
+            if (record != null) {
+                record.setFollowing(followingCount);
+            }
 
             List<Long> followerUserList = jdbcTemplate.queryForList(
                     "SELECT FollowerId FROM user_follows WHERE FollowingId = ? ORDER BY FollowerId",
                     Long.class,
                     userId
             );
-            record.setFollowerUsers(followerUserList != null ? followerUserList.stream().mapToLong(Long::longValue).toArray() : new long[0]);
+            long[] followerUsers = followerUserList.stream().mapToLong(Long::longValue).toArray();
+            if (record != null) {
+                record.setFollowerUsers(followerUsers);
+            }
 
             List<Long> followingUserList = jdbcTemplate.queryForList(
                     "SELECT FollowingId FROM user_follows WHERE FollowerId = ? ORDER BY FollowingId",
                     Long.class,
                     userId
             );
-            record.setFollowingUsers(followingUserList != null ? followingUserList.stream().mapToLong(Long::longValue).toArray() : new long[0]);
+            long[] followingUsers = followingUserList.stream().mapToLong(Long::longValue).toArray();
+            if (record != null) {
+                record.setFollowingUsers(followingUsers);
+            }
 
             return record;
         } catch (EmptyResultDataAccessException e) {
@@ -322,7 +329,7 @@ public class UserServiceImpl implements UserService {
                     userId
             );
 
-            if (isDeleted == null || isDeleted) {
+            if (isDeleted) {
                 throw new SecurityException("User is inactive or does not exist");
             }
 
@@ -334,7 +341,6 @@ public class UserServiceImpl implements UserService {
                 if (!"Male".equals(gender) && !"Female".equals(gender)) {
                     throw new IllegalArgumentException("Invalid gender value");
                 }
-                if (!first) sql.append(", ");
                 sql.append("Gender = ?");
                 params.add(gender);
                 first = false;
@@ -347,7 +353,6 @@ public class UserServiceImpl implements UserService {
                 if (!first) sql.append(", ");
                 sql.append("Age = ?");
                 params.add(age);
-                first = false;
             }
             if (params.isEmpty()) {
                 return;
@@ -410,7 +415,7 @@ public class UserServiceImpl implements UserService {
                     userId
             );
 
-            if (isDeleted == null || isDeleted) {
+            if (isDeleted) {
                 throw new SecurityException("User is inactive or does not exist");
             }
 
@@ -426,7 +431,6 @@ public class UserServiceImpl implements UserService {
 
             String countSql = "SELECT COUNT(*) FROM recipes r" + whereClause;
             Long total = jdbcTemplate.queryForObject(countSql, Long.class, params.toArray());
-            if (total == null) total = 0L;
 
             String sql = "SELECT r.RecipeId, r.Name, r.AuthorId, u.AuthorName, r.DatePublished, r.AggregatedRating, r.ReviewCount " + "FROM recipes r " +
                     "JOIN users u ON r.AuthorId = u.AuthorId " +

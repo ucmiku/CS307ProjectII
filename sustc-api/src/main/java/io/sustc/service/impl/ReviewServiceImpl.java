@@ -49,7 +49,7 @@ public class ReviewServiceImpl implements ReviewService {
                     Boolean.class,
                     userId
             );
-            if (isDeleted == null || isDeleted) {
+            if (isDeleted) {
                 throw new SecurityException("User is inactive or does not exist");
             }
         } catch (EmptyResultDataAccessException e) {
@@ -104,15 +104,15 @@ public class ReviewServiceImpl implements ReviewService {
                     Boolean.class,
                     userId
             );
-            if (isDeleted == null || isDeleted) {
+            if (isDeleted) {
                 throw new SecurityException("User is inactive or does not exist");
             }
         } catch (EmptyResultDataAccessException e) {
             throw new SecurityException("User does not exist");
         }
 
-        Long actualRecipeId;
-        Long reviewAuthorId;
+        long actualRecipeId;
+        long reviewAuthorId;
         try {
             actualRecipeId = jdbcTemplate.queryForObject(
                     "SELECT RecipeId FROM reviews WHERE ReviewId = ?",
@@ -128,7 +128,7 @@ public class ReviewServiceImpl implements ReviewService {
             throw new IllegalArgumentException("Review does not exist");
         }
 
-        if (actualRecipeId == null || actualRecipeId != recipeId) {
+        if (actualRecipeId != recipeId) {
             throw new IllegalArgumentException("Review does not belong to the specified recipe");
         }
 
@@ -162,15 +162,15 @@ public class ReviewServiceImpl implements ReviewService {
                     Boolean.class,
                     userId
             );
-            if (isDeleted == null || isDeleted) {
+            if (isDeleted) {
                 throw new SecurityException("User is inactive or does not exist");
             }
         } catch (EmptyResultDataAccessException e) {
             throw new SecurityException("User does not exist");
         }
 
-        Long actualRecipeId;
-        Long reviewAuthorId;
+        long actualRecipeId;
+        long reviewAuthorId;
         try {
             actualRecipeId = jdbcTemplate.queryForObject(
                     "SELECT RecipeId FROM reviews WHERE ReviewId = ?",
@@ -186,7 +186,7 @@ public class ReviewServiceImpl implements ReviewService {
             throw new IllegalArgumentException("Review does not exist");
         }
 
-        if (actualRecipeId == null || actualRecipeId != recipeId) {
+        if (actualRecipeId != recipeId) {
             throw new IllegalArgumentException("Review does not belong to the specified recipe");
         }
 
@@ -220,7 +220,7 @@ public class ReviewServiceImpl implements ReviewService {
             throw new SecurityException("Authentication failed");
         }
 
-        Long reviewAuthorId;
+        long reviewAuthorId;
         try {
             reviewAuthorId = jdbcTemplate.queryForObject(
                     "SELECT AuthorId FROM reviews WHERE ReviewId = ?",
@@ -231,7 +231,7 @@ public class ReviewServiceImpl implements ReviewService {
             throw new IllegalArgumentException("Review does not exist");
         }
 
-        if (reviewAuthorId != null && reviewAuthorId == userId) {
+        if (reviewAuthorId == userId) {
             throw new SecurityException("Users cannot like their own reviews");
         }
 
@@ -242,13 +242,12 @@ public class ReviewServiceImpl implements ReviewService {
                 userId
         );
 
-        if (alreadyLiked != null && alreadyLiked) {
-            Long likeCount = jdbcTemplate.queryForObject(
+        if (alreadyLiked) {
+            return jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM review_likes WHERE ReviewId = ?",
                     Long.class,
                     reviewId
             );
-            return likeCount != null ? likeCount : 0L;
         }
 
         jdbcTemplate.update(
@@ -257,13 +256,11 @@ public class ReviewServiceImpl implements ReviewService {
                 userId
         );
 
-        Long likeCount = jdbcTemplate.queryForObject(
+        return jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM review_likes WHERE ReviewId = ?",
                 Long.class,
                 reviewId
         );
-
-        return likeCount != null ? likeCount : 0L;
     }
 
     @Override
@@ -285,7 +282,7 @@ public class ReviewServiceImpl implements ReviewService {
                 reviewId
         );
 
-        if (reviewExists == null || !reviewExists) {
+        if (!reviewExists) {
             throw new IllegalArgumentException("Review does not exist");
         }
 
@@ -296,13 +293,12 @@ public class ReviewServiceImpl implements ReviewService {
                 userId
         );
 
-        if (hasLiked == null || !hasLiked) {
-            Long likeCount = jdbcTemplate.queryForObject(
+        if (!hasLiked) {
+            return jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM review_likes WHERE ReviewId = ?",
                     Long.class,
                     reviewId
             );
-            return likeCount != null ? likeCount : 0L;
         }
 
         jdbcTemplate.update(
@@ -311,13 +307,11 @@ public class ReviewServiceImpl implements ReviewService {
                 userId
         );
 
-        Long likeCount = jdbcTemplate.queryForObject(
+        return jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM review_likes WHERE ReviewId = ?",
                 Long.class,
                 reviewId
         );
-
-        return likeCount != null ? likeCount : 0L;
     }
 
 
@@ -342,8 +336,7 @@ public class ReviewServiceImpl implements ReviewService {
         };
 
         String countSql = "SELECT COUNT(*) FROM reviews r WHERE r.RecipeId = ? AND r.Review IS NOT NULL";
-        Long total = jdbcTemplate.queryForObject(countSql, Long.class, recipeId);
-        if (total == null) total = 0L;
+        long total = jdbcTemplate.queryForObject(countSql, Long.class, recipeId);
 
         String sql = "SELECT r.*, COALESCE(rl.LikeCount, 0) AS LikeCount, u.AuthorName " +
                 "FROM reviews r " +
@@ -367,7 +360,7 @@ public class ReviewServiceImpl implements ReviewService {
         
         List<Long> reviewIds = rows.stream()
                 .map(row -> ((Number) row.get("reviewid")).longValue())
-                .collect(java.util.stream.Collectors.toList());
+                .toList();
         
         Map<Long, List<Long>> likesMap = new HashMap<>();
         if (!reviewIds.isEmpty()) {
@@ -386,7 +379,7 @@ public class ReviewServiceImpl implements ReviewService {
         List<ReviewRecord> items = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             ReviewRecord record = new ReviewRecord();
-            Long rid = ((Number) row.get("reviewid")).longValue();
+            long rid = ((Number) row.get("reviewid")).longValue();
             record.setReviewId(rid);
             record.setRecipeId(((Number) row.get("recipeid")).longValue());
             record.setAuthorId(((Number) row.get("authorid")).longValue());
@@ -415,7 +408,6 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public RecipeRecord refreshRecipeAggregatedRating(long recipeId) {
-        // 检查食谱是否存在
         RecipeRecord recipe = recipeService.getRecipeById(recipeId);
         if (recipe == null) {
             throw new IllegalArgumentException("Recipe does not exist");
@@ -428,7 +420,7 @@ public class ReviewServiceImpl implements ReviewService {
         Object avgRatingObj = result.get("avgrating");
         Double avgRating = avgRatingObj != null ? ((Number) avgRatingObj).doubleValue() : null;
         Long reviewCountLong = (Long) result.get("reviewcount");
-        Integer reviewCount = reviewCountLong != null ? reviewCountLong.intValue() : 0;
+        int reviewCount = reviewCountLong != null ? reviewCountLong.intValue() : 0;
 
         if (reviewCount > 0 && avgRating != null && !avgRating.isNaN() && !avgRating.isInfinite()) {
             java.math.BigDecimal bd = new java.math.BigDecimal(avgRating);
