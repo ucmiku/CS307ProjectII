@@ -129,8 +129,7 @@ Then you should find a `submit` folder under the root of project, containing a s
 > If any jar file presents in the `submit` folder, the runner will use it
 > instead of the latest code in `sustc-api` module.
 
-Then create exactly one SQL file (any filename is acceptable) under the `submit` folder
-that could properly initialize your database.
+
 You don't need to include a `create database` statement in your submission, as we will create the database for you.
 
 ```text
@@ -139,7 +138,10 @@ submit              # Under the root of project     # Any filename is acceptable
 ```
 
 Then zip the `submit` folder (unzip should produce a folder named `submit`, instead of any other folder name, or the
-separated jar and sql files).
+separated jar).
+
+**Online submission**
+You just need to submit the zip file `submit.zip`, the structure of which is as mentioned above. Each hour you can submit 5 times and the due time is 2025.12.31 23:59.
 
 Also, similar to other courses, we require you to submit your source code for academic purposes and plagiarism
 detection. Please run the `clean` task before archiving your source code, which will delete the built files.
