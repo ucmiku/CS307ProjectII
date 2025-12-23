@@ -361,7 +361,6 @@ public class UserServiceImpl implements UserService {
             sql.append(" WHERE AuthorId = ?");
             params.add(userId);
 
-            // 执行更新
             int updatedRows = jdbcTemplate.update(sql.toString(), params.toArray());
             if (updatedRows == 0) {
                 throw new SecurityException("User does not exist");
