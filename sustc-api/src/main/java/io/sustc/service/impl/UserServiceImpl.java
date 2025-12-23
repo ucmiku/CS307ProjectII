@@ -24,6 +24,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public long register(RegisterUserReq req) {
+        //校验必填与生日 -> 计算年龄 -> 检查重名 -> 生成新ID -> 插入用户
         if (req == null) {
             return -1;
         }
@@ -88,6 +89,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public long login(AuthInfo auth) {
+        //基础校验 -> 检查未删除 -> 密码匹配返回ID，否则返回 -1
         if (auth == null) {
             return -1;
         }
@@ -128,6 +130,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public boolean deleteAccount(AuthInfo auth, long userId) {
+        //仅本人可删 -> 校验活跃 -> 软删除用户并清理关注关系
         if (auth == null) {
             throw new SecurityException("Invalid authentication info");
         }
@@ -171,6 +174,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public boolean follow(AuthInfo auth, long followeeId) {
+        //校验双方活跃且不可自关注 -> 已关注则取消，未关注则添加（开关逻辑）
         if (auth == null) {
             throw new SecurityException("Invalid authentication info");
         }
@@ -248,6 +252,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserRecord getById(long userId) {
+        //查基础信息 -> 统计粉丝/关注数量 -> 查询粉丝与关注列表 -> 返回完整记录
         try {
             // 查询用户基本信息
             UserRecord record = jdbcTemplate.queryForObject(
@@ -312,6 +317,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void updateProfile(AuthInfo auth, String gender, Integer age) {
+        //校验身份活跃 -> 校验输入合法 -> 动态拼接需更新字段 -> 执行更新
         if (auth == null) {
             throw new SecurityException("Invalid authentication info");
         }
@@ -389,6 +395,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public PageResult<FeedItem> feed(AuthInfo auth, int page, int size, String category) {
+        //校验身份与分页 -> 过滤关注的作者（可选分类）-> 按发布时间倒序分页返回
         if (auth == null) {
             throw new SecurityException("Invalid authentication info");
         }

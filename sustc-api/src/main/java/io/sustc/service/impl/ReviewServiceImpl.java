@@ -34,6 +34,7 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public long addReview(AuthInfo auth, long recipeId, int rating, String review) {
+        //校验用户与评分 -> 校验食谱 -> 生成新评论ID -> 写入评论 -> 刷新食谱评分
         if (auth == null || auth.getAuthorId() <= 0) {
             throw new IllegalArgumentException("Invalid authentication info");
         }
@@ -89,6 +90,7 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public void editReview(AuthInfo auth, long recipeId, long reviewId, int rating, String review) {
+        //校验用户与评分 -> 确认评论归属与作者身份 -> 更新评分/内容/时间 -> 刷新食谱评分
         if (auth == null || auth.getAuthorId() <= 0) {
             throw new SecurityException("Invalid authentication info");
         }
@@ -151,6 +153,7 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public void deleteReview(AuthInfo auth, long recipeId, long reviewId) {
+        //校验用户 -> 确认评论归属与作者身份 -> 删除点赞 -> 删除评论 -> 刷新食谱评分
         if (auth == null || auth.getAuthorId() <= 0) {
             throw new SecurityException("Invalid authentication info");
         }
@@ -210,6 +213,7 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public long likeReview(AuthInfo auth, long reviewId) {
+        //登录校验 -> 禁止自赞 -> 幂等检查已点赞 -> 插入点赞并返回最新计数
         if (auth == null || auth.getAuthorId() <= 0) {
             throw new SecurityException("Invalid authentication info");
         }
@@ -266,6 +270,7 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public long unlikeReview(AuthInfo auth, long reviewId) {
+        //登录校验 -> 校验评论存在 -> 若未点赞直接返回计数 -> 删除点赞并返回最新计数
         if (auth == null || auth.getAuthorId() <= 0) {
             throw new SecurityException("Invalid authentication info");
         }
@@ -317,6 +322,7 @@ public class ReviewServiceImpl implements ReviewService {
 
     @Override
     public PageResult<ReviewRecord> listByRecipe(long recipeId, int page, int size, String sort) {
+        //校验分页与食谱 -> 构造排序 -> 分页查评论/点赞数 -> 批量查点赞用户ID -> 组装分页结果
         if (page < 1) {
             throw new IllegalArgumentException("Page must be greater than 0");
         }
@@ -408,6 +414,7 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public RecipeRecord refreshRecipeAggregatedRating(long recipeId) {
+        //校验食谱 -> 统计有内容的评论平均分与数量 -> 写回聚合评分与评论数 -> 返回最新食谱
         RecipeRecord recipe = recipeService.getRecipeById(recipeId);
         if (recipe == null) {
             throw new IllegalArgumentException("Recipe does not exist");
