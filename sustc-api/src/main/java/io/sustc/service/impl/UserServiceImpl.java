@@ -23,12 +23,10 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public long register(RegisterUserReq req) {
-        // 检查请求参数
         if (req == null) {
             return -1;
         }
 
-        // 检查必需字段
         if (req.getName() == null || req.getName().isEmpty()) {
             return -1;
         }
@@ -37,7 +35,6 @@ public class UserServiceImpl implements UserService {
             return -1;
         }
 
-        // 检查年龄是否为有效的正整数
         String birthday = req.getBirthday();
         int age = 0;
         if (birthday != null && !birthday.isEmpty()) {
@@ -55,7 +52,6 @@ public class UserServiceImpl implements UserService {
             return -1;
         }
 
-        // 检查是否已存在同名用户
         Boolean userExists = jdbcTemplate.queryForObject(
                 "SELECT EXISTS(SELECT 1 FROM users WHERE AuthorName = ?)",
                 Boolean.class,
@@ -66,7 +62,6 @@ public class UserServiceImpl implements UserService {
             return -1;
         }
 
-        // 使用数据库序列生成新的用户ID
         Long newUserId;
         try {
             newUserId = jdbcTemplate.queryForObject(
@@ -77,7 +72,6 @@ public class UserServiceImpl implements UserService {
             newUserId = 1L;
         }
 
-        // 插入新用户
         String genderStr = req.getGender() == RegisterUserReq.Gender.MALE ? "Male" : "Female";
         jdbcTemplate.update(
                 "INSERT INTO users (AuthorId, AuthorName, Gender, Age, Followers, Following, Password, IsDeleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -96,7 +90,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public long login(AuthInfo auth) {
-        // 检查认证信息
         if (auth == null) {
             return -1;
         }
@@ -104,13 +97,11 @@ public class UserServiceImpl implements UserService {
         long authorId = auth.getAuthorId();
         String password = auth.getPassword();
 
-        // 检查authorId和password是否有效
         if (authorId <= 0 || password == null || password.isEmpty()) {
             return -1;
         }
 
         try {
-            // 检查用户是否存在且未被删除
             Boolean isDeleted = jdbcTemplate.queryForObject(
                     "SELECT IsDeleted FROM users WHERE AuthorId = ?",
                     Boolean.class,
@@ -121,7 +112,6 @@ public class UserServiceImpl implements UserService {
                 return -1;
             }
 
-            // 检查密码是否匹配
             String storedPassword = jdbcTemplate.queryForObject(
                     "SELECT Password FROM users WHERE AuthorId = ?",
                     String.class,
@@ -134,35 +124,29 @@ public class UserServiceImpl implements UserService {
                 return -1;
             }
         } catch (EmptyResultDataAccessException e) {
-            // 用户不存在
             return -1;
         } catch (Exception e) {
-            // 任何其他异常都返回 -1
             return -1;
         }
     }
 
     @Override
     public boolean deleteAccount(AuthInfo auth, long userId) {
-        // 检查认证信息
         if (auth == null) {
             throw new SecurityException("Invalid authentication info");
         }
 
         long operatorId = auth.getAuthorId();
 
-        // 检查operatorId是否有效
         if (operatorId <= 0) {
             throw new SecurityException("Invalid authentication info");
         }
 
-        // 检查操作用户是否有权限删除目标用户（只能删除自己）
         if (operatorId != userId) {
             throw new SecurityException("User can only delete their own account");
         }
 
         try {
-            // 检查操作用户是否存在且未被删除
             Boolean operatorIsDeleted = jdbcTemplate.queryForObject(
                     "SELECT IsDeleted FROM users WHERE AuthorId = ?",
                     Boolean.class,
@@ -173,13 +157,11 @@ public class UserServiceImpl implements UserService {
                 throw new SecurityException("Operator user is inactive or does not exist");
             }
 
-            // 执行软删除
             jdbcTemplate.update(
                     "UPDATE users SET IsDeleted = true WHERE AuthorId = ?",
                     userId
             );
 
-            // 删除所有关注关系
             jdbcTemplate.update(
                     "DELETE FROM user_follows WHERE FollowerId = ? OR FollowingId = ?",
                     userId, userId
@@ -193,25 +175,21 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public boolean follow(AuthInfo auth, long followeeId) {
-        // 检查认证信息
         if (auth == null) {
             throw new SecurityException("Invalid authentication info");
         }
 
         long followerId = auth.getAuthorId();
 
-        // 检查followerId是否有效
         if (followerId <= 0) {
             throw new SecurityException("Invalid authentication info");
         }
 
-        // 检查用户不能关注自己
         if (followerId == followeeId) {
             throw new SecurityException("User cannot follow themselves");
         }
 
         try {
-            // 检查关注者是否存在且未被删除
             Boolean followerIsDeleted = jdbcTemplate.queryForObject(
                     "SELECT IsDeleted FROM users WHERE AuthorId = ?",
                     Boolean.class,
@@ -222,7 +200,6 @@ public class UserServiceImpl implements UserService {
                 throw new SecurityException("Follower user is inactive or does not exist");
             }
 
-            // 检查被关注者是否存在且未被删除
             Boolean followeeIsDeleted = jdbcTemplate.queryForObject(
                     "SELECT IsDeleted FROM users WHERE AuthorId = ?",
                     Boolean.class,
@@ -233,7 +210,6 @@ public class UserServiceImpl implements UserService {
                 throw new SecurityException("Followee user is inactive or does not exist");
             }
 
-            // 检查是否已经关注
             Boolean isFollowing = jdbcTemplate.queryForObject(
                     "SELECT EXISTS(SELECT 1 FROM user_follows WHERE FollowerId = ? AND FollowingId = ?)",
                     Boolean.class,
@@ -241,19 +217,18 @@ public class UserServiceImpl implements UserService {
             );
 
             if (isFollowing != null && isFollowing) {
-                // 已经关注，执行取消关注
                 jdbcTemplate.update(
                         "DELETE FROM user_follows WHERE FollowerId = ? AND FollowingId = ?",
                         followerId, followeeId
                 );
-                return false; // 取消关注后状态为未关注
+                return false;
             } else {
                 // 未关注，执行关注
                 jdbcTemplate.update(
                         "INSERT INTO user_follows (FollowerId, FollowingId) VALUES (?, ?)",
                         followerId, followeeId
                 );
-                return true; // 关注后状态为已关注
+                return true;
             }
         } catch (EmptyResultDataAccessException e) {
             throw new SecurityException("User does not exist");
@@ -293,7 +268,6 @@ public class UserServiceImpl implements UserService {
                     userId
             );
 
-            // 动态计算 followers 数量（有多少人关注了这个用户）
             Integer followersCount = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM user_follows WHERE FollowingId = ?",
                     Integer.class,
@@ -301,7 +275,6 @@ public class UserServiceImpl implements UserService {
             );
             record.setFollowers(followersCount != null ? followersCount : 0);
 
-            // 动态计算 following 数量（这个用户关注了多少人）
             Integer followingCount = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM user_follows WHERE FollowerId = ?",
                     Integer.class,
@@ -309,7 +282,6 @@ public class UserServiceImpl implements UserService {
             );
             record.setFollowing(followingCount != null ? followingCount : 0);
 
-            // 查询 followerUsers 列表（关注这个用户的用户ID列表）
             List<Long> followerUserList = jdbcTemplate.queryForList(
                     "SELECT FollowerId FROM user_follows WHERE FollowingId = ? ORDER BY FollowerId",
                     Long.class,
@@ -317,7 +289,6 @@ public class UserServiceImpl implements UserService {
             );
             record.setFollowerUsers(followerUserList != null ? followerUserList.stream().mapToLong(Long::longValue).toArray() : new long[0]);
 
-            // 查询 followingUsers 列表（这个用户关注的用户ID列表）
             List<Long> followingUserList = jdbcTemplate.queryForList(
                     "SELECT FollowingId FROM user_follows WHERE FollowerId = ? ORDER BY FollowingId",
                     Long.class,
@@ -334,20 +305,17 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void updateProfile(AuthInfo auth, String gender, Integer age) {
-        // 检查认证信息
         if (auth == null) {
             throw new SecurityException("Invalid authentication info");
         }
 
         long userId = auth.getAuthorId();
 
-        // 检查userId是否有效
         if (userId <= 0) {
             throw new SecurityException("Invalid authentication info");
         }
 
         try {
-            // 检查用户是否存在且未被删除
             Boolean isDeleted = jdbcTemplate.queryForObject(
                     "SELECT IsDeleted FROM users WHERE AuthorId = ?",
                     Boolean.class,
@@ -358,13 +326,10 @@ public class UserServiceImpl implements UserService {
                 throw new SecurityException("User is inactive or does not exist");
             }
 
-            // 构建更新语句
             StringBuilder sql = new StringBuilder("UPDATE users SET ");
             List<Object> params = new ArrayList<>();
 
             boolean first = true;
-
-            // 更新性别
             if (gender != null) {
                 if (!"Male".equals(gender) && !"Female".equals(gender)) {
                     throw new IllegalArgumentException("Invalid gender value");
@@ -375,7 +340,6 @@ public class UserServiceImpl implements UserService {
                 first = false;
             }
 
-            // 更新年龄
             if (age != null) {
                 if (age <= 0) {
                     throw new IllegalArgumentException("Age must be a positive integer");
@@ -385,8 +349,6 @@ public class UserServiceImpl implements UserService {
                 params.add(age);
                 first = false;
             }
-
-            // 如果没有要更新的字段，直接返回
             if (params.isEmpty()) {
                 return;
             }
@@ -410,10 +372,8 @@ public class UserServiceImpl implements UserService {
         item.setName(rs.getString("Name"));
         item.setAuthorId(rs.getLong("AuthorId"));
         item.setAuthorName(rs.getString("AuthorName"));
-        // 处理时间字段，确保使用 UTC 时区
         java.sql.Timestamp timestamp = rs.getTimestamp("DatePublished");
         if (timestamp != null) {
-            // 将 Timestamp 转换为 UTC 时区的 Instant
             item.setDatePublished(timestamp.toLocalDateTime().atZone(java.time.ZoneOffset.UTC).toInstant());
         }
         // Handle BigDecimal to Double conversion for PostgreSQL
@@ -425,19 +385,14 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public PageResult<FeedItem> feed(AuthInfo auth, int page, int size, String category) {
-        // 检查认证信息
         if (auth == null) {
             throw new SecurityException("Invalid authentication info");
         }
 
         long userId = auth.getAuthorId();
-
-        // 检查userId是否有效
         if (userId <= 0) {
             throw new SecurityException("Invalid authentication info");
         }
-
-        // 检查分页参数
         if (page < 1) {
             page = 1;
         }
@@ -449,7 +404,6 @@ public class UserServiceImpl implements UserService {
         }
 
         try {
-            // 检查用户是否存在且未被删除
             Boolean isDeleted = jdbcTemplate.queryForObject(
                     "SELECT IsDeleted FROM users WHERE AuthorId = ?",
                     Boolean.class,
@@ -460,24 +414,20 @@ public class UserServiceImpl implements UserService {
                 throw new SecurityException("User is inactive or does not exist");
             }
 
-            // 构建查询条件
             StringBuilder whereClause = new StringBuilder(
                     " WHERE r.AuthorId IN (SELECT FollowingId FROM user_follows WHERE FollowerId = ?)");
             List<Object> params = new ArrayList<>();
             params.add(userId);
 
-            // 添加分类筛选条件
             if (category != null && !category.isEmpty()) {
                 whereClause.append(" AND r.RecipeCategory = ?");
                 params.add(category);
             }
 
-            // 查询总数
             String countSql = "SELECT COUNT(*) FROM recipes r" + whereClause;
             Long total = jdbcTemplate.queryForObject(countSql, Long.class, params.toArray());
             if (total == null) total = 0L;
 
-            // 查询数据
             String sql = "SELECT r.RecipeId, r.Name, r.AuthorId, u.AuthorName, r.DatePublished, r.AggregatedRating, r.ReviewCount " + "FROM recipes r " +
                     "JOIN users u ON r.AuthorId = u.AuthorId " +
                     whereClause +
