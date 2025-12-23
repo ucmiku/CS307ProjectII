@@ -11,16 +11,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @Service
 @Slf4j
 public class ReviewServiceImpl implements ReviewService {
-
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -34,7 +34,6 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     @Transactional
     public long addReview(AuthInfo auth, long recipeId, int rating, String review) {
-        // 检查参数
         if (auth == null || auth.getAuthorId() <= 0) {
             throw new SecurityException("Invalid authentication info");
         }
@@ -356,30 +355,6 @@ public class ReviewServiceImpl implements ReviewService {
         return likeCount != null ? likeCount : 0L;
     }
 
-    private final RowMapper<ReviewRecord> reviewRowMapper = (rs, rowNum) -> {
-        ReviewRecord record = new ReviewRecord();
-        record.setReviewId(rs.getLong("ReviewId"));
-        record.setRecipeId(rs.getLong("RecipeId"));
-        record.setAuthorId(rs.getLong("AuthorId"));
-        record.setAuthorName(rs.getString("AuthorName"));
-        // Handle potential BigDecimal to Float conversion for PostgresSQL
-        Object ratingObj = rs.getObject("Rating");
-        record.setRating(ratingObj != null ? ((Number) ratingObj).floatValue() : 0.0f);
-        record.setReview(rs.getString("Review"));
-        record.setDateSubmitted(rs.getTimestamp("DateSubmitted"));
-        record.setDateModified(rs.getTimestamp("DateModified"));
-
-        // 获取点赞数
-        long likeCount = rs.getLong("LikeCount");
-        // 创建一个长度为likeCount的数组，这里简化处理，实际项目中可能需要查询具体的点赞用户ID
-        long[] likes = new long[(int) likeCount];
-        for (int i = 0; i < likeCount; i++) {
-            likes[i] = i; // 占位符，实际项目中应该填充真实的用户ID
-        }
-        record.setLikes(likes);
-
-        return record;
-    };
 
     @Override
     public PageResult<ReviewRecord> listByRecipe(long recipeId, int page, int size, String sort) {
@@ -397,11 +372,11 @@ public class ReviewServiceImpl implements ReviewService {
             throw new IllegalArgumentException("Recipe does not exist");
         }
 
-        // 构建排序子句
+        // 构建排序子句，添加ReviewId作为二级排序确保结果一致性
         String orderBy = switch (sort == null ? "" : sort) {
-            case "date_desc" -> " ORDER BY r.DateModified DESC ";
-            case "likes_desc" -> " ORDER BY LikeCount DESC ";
-            default -> " ORDER BY r.DateModified DESC "; // 默认按时间倒序
+            case "date_desc" -> " ORDER BY r.DateModified DESC, r.ReviewId DESC ";
+            case "likes_desc" -> " ORDER BY LikeCount DESC, r.ReviewId DESC ";
+            default -> " ORDER BY r.DateModified DESC, r.ReviewId DESC "; // 默认按时间倒序
         };
 
         // 查询总数（不过滤已删除用户的评论）
@@ -419,7 +394,60 @@ public class ReviewServiceImpl implements ReviewService {
                 "LIMIT ? OFFSET ?";
 
         int offset = (page - 1) * size;
-        List<ReviewRecord> items = jdbcTemplate.query(sql, reviewRowMapper, recipeId, size, offset);
+        // 先查询基础数据
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, recipeId, size, offset);
+        
+        // 批量查询所有评论的点赞用户ID，避免N+1查询问题
+        if (rows.isEmpty()) {
+            return PageResult.<ReviewRecord>builder()
+                    .items(new ArrayList<>())
+                    .page(page)
+                    .size(size)
+                    .total(total)
+                    .build();
+        }
+        
+        List<Long> reviewIds = rows.stream()
+                .map(row -> ((Number) row.get("reviewid")).longValue())
+                .collect(java.util.stream.Collectors.toList());
+        
+        // 批量查询所有点赞关系
+        Map<Long, List<Long>> likesMap = new HashMap<>();
+        if (!reviewIds.isEmpty()) {
+            String placeholders = reviewIds.stream().map(id -> "?").collect(java.util.stream.Collectors.joining(","));
+            List<Map<String, Object>> likesRows = jdbcTemplate.queryForList(
+                    "SELECT ReviewId, AuthorId FROM review_likes WHERE ReviewId IN (" + placeholders + ") ORDER BY ReviewId, AuthorId",
+                    reviewIds.toArray()
+            );
+            for (Map<String, Object> likeRow : likesRows) {
+                Long rid = ((Number) likeRow.get("reviewid")).longValue();
+                Long uid = ((Number) likeRow.get("authorid")).longValue();
+                likesMap.computeIfAbsent(rid, k -> new ArrayList<>()).add(uid);
+            }
+        }
+        
+        // 构建ReviewRecord列表
+        List<ReviewRecord> items = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            ReviewRecord record = new ReviewRecord();
+            Long rid = ((Number) row.get("reviewid")).longValue();
+            record.setReviewId(rid);
+            record.setRecipeId(((Number) row.get("recipeid")).longValue());
+            record.setAuthorId(((Number) row.get("authorid")).longValue());
+            record.setAuthorName((String) row.get("authorname"));
+            
+            Object ratingObj = row.get("rating");
+            record.setRating(ratingObj != null ? ((Number) ratingObj).floatValue() : 0.0f);
+            record.setReview((String) row.get("review"));
+            record.setDateSubmitted((java.sql.Timestamp) row.get("datesubmitted"));
+            record.setDateModified((java.sql.Timestamp) row.get("datemodified"));
+            
+            // 设置点赞用户ID列表
+            List<Long> likeUserIds = likesMap.getOrDefault(rid, new ArrayList<>());
+            record.setLikes(likeUserIds.stream().mapToLong(Long::longValue).toArray());
+            
+            items.add(record);
+        }
 
         return PageResult.<ReviewRecord>builder()
                 .items(items)
@@ -449,8 +477,10 @@ public class ReviewServiceImpl implements ReviewService {
 
         // 更新食谱表中的聚合评分和评论数量
         if (reviewCount > 0 && avgRating != null) {
-            // 四舍五入到两位小数
-            double roundedRating = Math.round(avgRating * 100.0) / 100.0;
+            // 四舍五入到两位小数，使用BigDecimal确保精度
+            java.math.BigDecimal bd = new java.math.BigDecimal(avgRating);
+            bd = bd.setScale(2, java.math.RoundingMode.HALF_UP);
+            double roundedRating = bd.doubleValue();
             jdbcTemplate.update(
                     "UPDATE recipes SET AggregatedRating = ?, ReviewCount = ? WHERE RecipeId = ?",
                     roundedRating,
